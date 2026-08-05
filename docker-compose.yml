@@ -1,0 +1,155 @@
+# One-command demo:  docker compose up --build   (or `make demo`)
+#
+# Brings up Postgres, Redis, the dev OIDC provider, the API (migrated and seeded), the
+# Next.js front end, Prometheus and Grafana. Nothing external is required — no AWS
+# account, no third-party IdP.
+#
+# Ports are deliberately non-default (5433, 6380) so this does not collide with a
+# Postgres or Redis you already have running locally.
+
+name: sw-saas-platform
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: saas
+    ports:
+      - '5433:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Creates the least-privilege app_user role on first init.
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d saas']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    command:
+      - postgres
+      # Surfaces slow queries in the demo; noisy for production, useful here.
+      - -c
+      - log_min_duration_statement=200
+
+  redis:
+    image: redis:7.4-alpine
+    command: ['redis-server', '--appendonly', 'yes', '--save', '']
+    ports:
+      - '6380:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # Real OIDC provider implementing authorization-code + PKCE, discovery and JWKS.
+  # Exists so the OAuth2 path is genuinely exercised offline. Not for production use —
+  # it accepts a fixed set of seeded demo users.
+  dev-idp:
+    build:
+      context: .
+      dockerfile: apps/dev-idp/Dockerfile
+    environment:
+      PORT: 4010
+      ISSUER: http://localhost:4010
+      CLIENT_ID: saas-web
+      CLIENT_SECRET: dev-client-secret
+      REDIRECT_URI: http://localhost:4000/v1/auth/callback
+    ports:
+      - '4010:4010'
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://localhost:4010/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: info
+      PORT: 4000
+      DATABASE_URL: postgres://app_user:app_dev_password@postgres:5432/saas
+      DATABASE_ADMIN_URL: postgres://postgres:postgres@postgres:5432/saas
+      REDIS_URL: redis://redis:6379
+      JWT_ISSUER: http://localhost:4000
+      JWT_AUDIENCE: saas-api
+      # Reachable from the browser (redirects) and from the API container (token
+      # exchange). The dev IdP accepts both and signs with the same key.
+      OIDC_ISSUER: http://localhost:4010
+      OIDC_INTERNAL_ISSUER: http://dev-idp:4010
+      OIDC_CLIENT_ID: saas-web
+      OIDC_CLIENT_SECRET: dev-client-secret
+      OIDC_REDIRECT_URI: http://localhost:4000/v1/auth/callback
+      WEB_ORIGIN: http://localhost:3000
+    ports:
+      - '4000:4000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      dev-idp:
+        condition: service_healthy
+    # Migrate, seed, then serve. Seeding is idempotent.
+    command: ['sh', '-c', 'node dist/db/migrate.js && node dist/db/seed.js && node dist/server.js']
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://localhost:4000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:4000
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+    ports:
+      - '3000:3000'
+    depends_on:
+      api:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    ports:
+      - '9090:9090'
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts:/etc/prometheus/alerts:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=6h
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    ports:
+      - '3001:3000'
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana-dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+volumes:
+  pgdata:
+  redisdata:
