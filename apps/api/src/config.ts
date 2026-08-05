@@ -71,6 +71,14 @@ const EnvSchema = z.object({
 
   /** OIDC provider. Points at the in-repo dev IdP by default; set to Auth0/Google/Keycloak in prod. */
   OIDC_ISSUER: z.string().default('http://localhost:4010'),
+  /**
+   * Address the API uses to reach the provider server-to-server, when it differs from the
+   * public issuer. Under docker-compose the browser is redirected to `localhost:4010`
+   * while the API must call `dev-idp:4010` — same provider, different network vantage
+   * point. Discovery and JWKS are fetched from here; the `iss` claim is still validated
+   * against OIDC_ISSUER, so this does not weaken verification.
+   */
+  OIDC_INTERNAL_ISSUER: z.string().optional(),
   OIDC_CLIENT_ID: z.string().default('saas-web'),
   OIDC_CLIENT_SECRET: z.string().default('dev-client-secret'),
   OIDC_REDIRECT_URI: z.string().default('http://localhost:4000/v1/auth/callback'),

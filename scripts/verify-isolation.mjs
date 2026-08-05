@@ -18,7 +18,8 @@
  * Requires the dev database to be up:  docker compose up -d postgres redis
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
@@ -38,16 +39,31 @@ const RED = '\x1b[31m';
 const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
 
-/** Runs the isolation suite. Returns true if it passed. */
+/**
+ * Path to vitest's own entry script.
+ *
+ * Resolved from its package manifest and run with `process.execPath` rather than shelling
+ * out to `npx`. On Windows, Node refuses to spawn a `.cmd` shim without `shell: true`
+ * (the fix for CVE-2024-27980), and `shell: true` concatenates arguments unescaped
+ * (DEP0190). Invoking the JS entry point directly sidesteps both and is faster.
+ */
+function vitestEntry() {
+  const require = createRequire(import.meta.url);
+  const manifestPath = require.resolve('vitest/package.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const bin = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin.vitest;
+  return join(dirname(manifestPath), bin);
+}
+
+const VITEST = vitestEntry();
+
+/** Runs the isolation suite. Returns whether it passed, plus its combined output. */
 function runSuite() {
-  // npx.cmd rather than shell:true — passing args through a shell concatenates them
-  // unescaped (Node DEP0190) and is not needed here.
-  const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-  const res = spawnSync(npx, ['vitest', 'run', 'tests/isolation', '--reporter=dot'], {
-    cwd: API_DIR,
-    encoding: 'utf8',
-    env: { ...process.env, CI: '' },
-  });
+  const res = spawnSync(
+    process.execPath,
+    [VITEST, 'run', 'tests/isolation', '--reporter=dot'],
+    { cwd: API_DIR, encoding: 'utf8', env: { ...process.env, CI: '' } },
+  );
   return { passed: res.status === 0, output: `${res.stdout ?? ''}${res.stderr ?? ''}` };
 }
 

@@ -26,7 +26,11 @@ export const logger: Logger = pino({
     censor: '[redacted]',
   },
   base: { service: 'saas-api' },
-  ...(cfg.isProduction
+  // Pretty printing only for interactive development. It is skipped under test because
+  // pino transports run in a worker thread, and inside a test runner's own worker that
+  // output is silently dropped — which turns a logged error into no error at all, exactly
+  // when you are trying to debug a failing suite.
+  ...(cfg.isProduction || cfg.isTest
     ? {}
     : { transport: { target: 'pino-pretty', options: { colorize: true, singleLine: false } } }),
 });
