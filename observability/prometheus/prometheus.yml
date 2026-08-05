@@ -1,0 +1,27 @@
+# Prometheus configuration for the local demo.
+#
+# In the cluster this file is replaced by a ServiceMonitor / PodMonitor managed by the
+# kube-prometheus-stack operator (see infra/k8s/base/servicemonitor.yaml). The scrape
+# targets differ; the alert rules in ./alerts are the same files in both cases, which is
+# the point — an alert that only exists in production has never been tested.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: local
+
+rule_files:
+  - /etc/prometheus/alerts/*.yml
+
+scrape_configs:
+  - job_name: saas-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['api:4000']
+        labels:
+          service: saas-api
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']

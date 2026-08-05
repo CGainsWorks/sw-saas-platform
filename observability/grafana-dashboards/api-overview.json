@@ -1,0 +1,227 @@
+{
+  "uid": "saas-api-overview",
+  "title": "SaaS API — overview",
+  "tags": ["saas", "api"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Service level",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "Availability (30d SLO: 99.9%)",
+      "description": "Fraction of requests not returning 5xx. The SLO and its error budget are defined in docs/slos.md.",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.995 },
+              { "color": "green", "value": 0.999 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 - (sum(rate(saas_api_http_requests_total{status_code=~\"5..\"}[$__rate_interval])) / clamp_min(sum(rate(saas_api_http_requests_total[$__rate_interval])), 1))"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "p99 latency (SLO: < 500ms)",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.3 },
+              { "color": "red", "value": 0.5 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(saas_api_http_request_duration_seconds_bucket[$__rate_interval])))"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Tenant scope violations",
+      "description": "Requests rejected because the tenant claim failed a check. A sustained non-zero rate is either an attack or a bug — see docs/runbook.md#tenant-scope-violations.",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 0.5 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(saas_api_tenant_scope_violations_total[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Requests per second",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(saas_api_http_requests_total[$__rate_interval]))" }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "Traffic and errors",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Request rate by status class",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 20 } } },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{status_code}}",
+          "expr": "sum by (status_code) (rate(saas_api_http_requests_total[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency percentiles",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "p50",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(saas_api_http_request_duration_seconds_bucket[$__rate_interval])))"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "p95",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(saas_api_http_request_duration_seconds_bucket[$__rate_interval])))"
+        },
+        {
+          "refId": "C",
+          "legendFormat": "p99",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(saas_api_http_request_duration_seconds_bucket[$__rate_interval])))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Slowest routes (p95)",
+      "description": "Labelled by route template, never by resolved path — a label per resource id would be unbounded cardinality.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{route}}",
+          "expr": "topk(5, histogram_quantile(0.95, sum by (le, route) (rate(saas_api_http_request_duration_seconds_bucket[$__rate_interval]))))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "GraphQL operation duration (p95)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{operation_name}}",
+          "expr": "histogram_quantile(0.95, sum by (le, operation_name) (rate(saas_api_graphql_operation_duration_seconds_bucket[$__rate_interval])))"
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "Data layer",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Connection pool",
+      "description": "`waiting` above zero means requests are queueing for a connection — the pooled model's shared-resource failure mode.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{state}}",
+          "expr": "saas_api_db_pool_connections"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tenant transaction duration (p95)",
+      "description": "Every request opens a transaction so SET LOCAL can scope it. This is the cost of that decision, measured.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{outcome}}",
+          "expr": "histogram_quantile(0.95, sum by (le, outcome) (rate(saas_api_db_transaction_duration_seconds_bucket[$__rate_interval])))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cache hit ratio",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "min": 0 } },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "hit ratio",
+          "expr": "sum(rate(saas_api_cache_events_total{result=\"hit\"}[$__rate_interval])) / clamp_min(sum(rate(saas_api_cache_events_total[$__rate_interval])), 1)"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Auth events",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{event}} / {{outcome}}",
+          "expr": "sum by (event, outcome) (rate(saas_api_auth_events_total[$__rate_interval]))"
+        }
+      ]
+    }
+  ]
+}

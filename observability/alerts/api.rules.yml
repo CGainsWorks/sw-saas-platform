@@ -1,0 +1,142 @@
+# Alert rules for the API.
+#
+# Two principles applied throughout:
+#
+#   1. Alert on symptoms users feel (error rate, latency, saturation), not on causes.
+#      "CPU is high" is not an incident; "one in twenty requests is failing" is.
+#   2. Every alert has a runbook link. An alert that fires at 3am with no stated action is
+#      a page that trains people to ignore pages.
+#
+# The burn-rate alerts implement the SLOs defined in docs/slos.md. Multi-window burn rate
+# is used rather than a naive "error rate > 1%" threshold: a fixed threshold either pages
+# constantly on brief blips or misses a slow burn that exhausts the entire error budget
+# over a week.
+
+groups:
+  - name: saas-api-availability
+    rules:
+      - alert: ApiDown
+        expr: up{job="saas-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'API is not being scraped'
+          description: 'Prometheus cannot reach the API. Either it is down or metrics broke.'
+          runbook: 'docs/runbook.md#api-down'
+
+      # Fast burn: at this rate the 30-day error budget is gone in ~2 days. Page.
+      - alert: ApiErrorBudgetFastBurn
+        expr: |
+          (
+            sum(rate(saas_api_http_requests_total{status_code=~"5.."}[5m]))
+            / sum(rate(saas_api_http_requests_total[5m]))
+          ) > (14.4 * 0.001)
+          and
+          (
+            sum(rate(saas_api_http_requests_total{status_code=~"5.."}[1h]))
+            / sum(rate(saas_api_http_requests_total[1h]))
+          ) > (14.4 * 0.001)
+        for: 2m
+        labels:
+          severity: critical
+          slo: availability
+        annotations:
+          summary: 'Burning the availability error budget 14x too fast'
+          description: '5xx rate is high enough to exhaust the 30-day budget in about two days.'
+          runbook: 'docs/runbook.md#elevated-5xx'
+
+      # Slow burn: real, but it can wait for working hours. Ticket, do not page.
+      - alert: ApiErrorBudgetSlowBurn
+        expr: |
+          (
+            sum(rate(saas_api_http_requests_total{status_code=~"5.."}[6h]))
+            / sum(rate(saas_api_http_requests_total[6h]))
+          ) > (6 * 0.001)
+        for: 30m
+        labels:
+          severity: warning
+          slo: availability
+        annotations:
+          summary: 'Sustained elevated error rate'
+          description: 'Slow burn of the availability error budget over the last 6 hours.'
+          runbook: 'docs/runbook.md#elevated-5xx'
+
+  - name: saas-api-latency
+    rules:
+      - alert: ApiLatencyHigh
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le) (rate(saas_api_http_request_duration_seconds_bucket[5m]))
+          ) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          slo: latency
+        annotations:
+          summary: 'p99 request latency above 500ms'
+          description: 'p99 is {{ $value | humanizeDuration }} over the last 5 minutes.'
+          runbook: 'docs/runbook.md#latency'
+
+  - name: saas-api-isolation
+    rules:
+      # The one that matters most in this system.
+      #
+      # This counter increments when a request is rejected because its tenant claim failed
+      # a check. A low background rate is normal (expired tokens). A spike is either an
+      # attack in progress or a bug that has started sending requests to the wrong tenant,
+      # and both warrant waking someone up.
+      - alert: TenantScopeViolationSpike
+        expr: sum(rate(saas_api_tenant_scope_violations_total[5m])) > 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Elevated rate of tenant scope violations'
+          description: >-
+            {{ $value | printf "%.2f" }} rejected-tenant-scope requests per second.
+            Check the reason label: no_token and expired are usually benign; anything
+            else means tokens are being tampered with or a client is misdirecting traffic.
+          runbook: 'docs/runbook.md#tenant-scope-violations'
+
+      - alert: RefreshTokenReuseDetected
+        expr: increase(saas_api_auth_events_total{event="refresh",outcome="reuse_detected"}[15m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Refresh token reuse detected'
+          description: >-
+            A refresh token was presented after it had already been rotated. The token
+            family was revoked automatically. This is either a client replaying a request
+            or a stolen token being used; the two are indistinguishable from here.
+          runbook: 'docs/runbook.md#refresh-token-reuse'
+
+  - name: saas-api-saturation
+    rules:
+      # The pool is the shared resource in a pooled tenancy model, so exhausting it is how
+      # one tenant's traffic becomes every tenant's outage.
+      - alert: DatabasePoolExhausted
+        expr: |
+          saas_api_db_pool_connections{state="waiting"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Requests are queueing for a database connection'
+          description: 'The pg pool has been saturated for 5 minutes. Check for slow queries or a hot tenant.'
+          runbook: 'docs/runbook.md#pool-exhaustion'
+
+      - alert: DatabaseTransactionsSlow
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(saas_api_db_transaction_duration_seconds_bucket[5m]))
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'p95 tenant transaction duration above 1s'
+          runbook: 'docs/runbook.md#slow-queries'

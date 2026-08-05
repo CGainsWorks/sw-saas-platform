@@ -1,0 +1,16 @@
+apiVersion: 1
+
+providers:
+  - name: sw-saas-platform
+    orgId: 1
+    type: file
+    disableDeletion: true
+    # Dashboards are provisioned from files in the repo, so they are version-controlled
+    # and reviewable. Edits made in the Grafana UI are not persisted — which is the
+    # intended trade-off: a dashboard that only exists in someone's browser is lost the
+    # first time the instance is rebuilt.
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
