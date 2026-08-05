@@ -1,0 +1,116 @@
+# Network policies.
+#
+# Requires a CNI that enforces them. The AWS VPC CNI does NOT by default — enable network
+# policy support on the vpc-cni addon, or install Calico. Applied without an enforcing
+# CNI these objects are accepted silently and do nothing, which is worse than not having
+# them because the cluster looks protected. Checked as part of the runbook's post-deploy
+# verification.
+#
+# Default deny, then allow only what is needed. The API is reachable from the ALB and
+# from Prometheus; the web pods are reachable from the ALB; nothing else can reach
+# anything.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: saas
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: saas-api
+  namespace: saas
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: saas-api
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # From the ALB, which targets pod IPs directly and appears as node-range traffic.
+    - from:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+      ports:
+        - protocol: TCP
+          port: 4000
+    # From the front end.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: saas-web
+      ports:
+        - protocol: TCP
+          port: 4000
+    # From Prometheus, for /metrics.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 4000
+  egress:
+    # DNS. Omitting this is the single most common way to break a cluster with network
+    # policy: every outbound connection starts with a name lookup.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Postgres and Redis in the data subnets, plus HTTPS for the OIDC provider's JWKS,
+    # Secrets Manager and STS.
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+    - ports:
+        - protocol: TCP
+          port: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: saas-web
+  namespace: saas
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: saas-web
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+      ports:
+        - protocol: TCP
+          port: 3000
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # The front end talks to the API and nothing else. It has no database access, no
+    # Redis access and no route to AWS APIs.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: saas-api
+      ports:
+        - protocol: TCP
+          port: 4000

@@ -32,3 +32,9 @@ kubeconfig
 
 .vscode/
 .idea/
+
+# Rendered from docs/erd.md by docs/render-erd.sh. The Markdown source is canonical, and
+# large binaries do not belong in the Git history.
+docs/erd.png
+docs/erd.mmd
+

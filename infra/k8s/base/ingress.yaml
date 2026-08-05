@@ -1,0 +1,63 @@
+# Single ALB fronting both services, provisioned by the AWS Load Balancer Controller.
+#
+# One load balancer rather than two: an ALB is ~$16/month plus LCU charges, and putting
+# both services behind one with path-based routing halves that. It also means the browser
+# talks to a single origin, so the session cookies are same-site rather than cross-site —
+# which is what lets them stay SameSite=Lax instead of needing None.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: saas
+  namespace: saas
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    # Route to pod IPs directly instead of via NodePort. One hop fewer, and the ALB's
+    # health checks then reflect pod health rather than node health.
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/certificate-arn: REPLACED_BY_OVERLAY
+    # TLS 1.2 minimum. TLS13-1-2 is the modern policy that still admits 1.2 clients.
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: '15'
+    # Must exceed the pod's preStop sleep plus drain, or the ALB stops draining before
+    # in-flight requests finish and the deploy shows up as 502s.
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=30
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=60
+    alb.ingress.kubernetes.io/tags: Project=sw-saas-platform
+spec:
+  ingressClassName: alb
+  rules:
+    - host: saas.example.com
+      http:
+        paths:
+          # Most specific first: ALB rule evaluation is ordered, and a "/" rule placed
+          # above these would swallow every API request.
+          - path: /v1
+            pathType: Prefix
+            backend:
+              service:
+                name: saas-api
+                port: { number: 80 }
+          - path: /graphql
+            pathType: Prefix
+            backend:
+              service:
+                name: saas-api
+                port: { number: 80 }
+          - path: /.well-known
+            pathType: Prefix
+            backend:
+              service:
+                name: saas-api
+                port: { number: 80 }
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: saas-web
+                port: { number: 80 }
+# Note what is absent: /metrics is NOT routed. Prometheus scrapes it in-cluster over the
+# pod network. Exposing it publicly would hand out request rates, route names and error
+# counts to anyone who asked.

@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: saas-api
+  namespace: saas
+spec:
+  template:
+    spec:
+      # Hard requirement in production, not the base's ScheduleAnyway. Better to leave a
+      # pod Pending and page than to quietly place all three replicas on one node and
+      # discover it during that node's failure.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: saas-api
+      containers:
+        - name: api
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              # Still no CPU limit — see the note in the base deployment. Memory is
+              # limited because it is not compressible.
+              memory: 1Gi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: saas-api
+  namespace: saas
+spec:
+  # With 3 replicas, keep 2 during a drain rather than the base's 1.
+  minAvailable: 2

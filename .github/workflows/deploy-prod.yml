@@ -1,0 +1,203 @@
+name: Deploy production
+
+# Tag-triggered, not branch-triggered. A production release should be a deliberate,
+# named artefact you can point at afterwards — not whatever happened to land on main.
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to deploy'
+        required: true
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+  AWS_REGION: eu-west-2
+  CLUSTER: saas-prod
+  NAMESPACE: saas
+
+jobs:
+  # Production does not trust that CI passed on some earlier commit. The isolation suite
+  # runs again, here, against the exact ref being released.
+  verify:
+    name: Re-run the isolation suite on the release ref
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.4-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: saas
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d saas"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports: ['6380:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://app_user:app_dev_password@localhost:5433/saas
+      DATABASE_ADMIN_URL: postgres://postgres:postgres@localhost:5433/saas
+      REDIS_URL: redis://localhost:6380
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build --workspace @saas/shared-types
+
+      - name: Create the least-privilege application role
+        run: |
+          PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d saas -v ON_ERROR_STOP=1 <<'SQL'
+            CREATE ROLE app_user LOGIN PASSWORD 'app_dev_password'
+              NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOINHERIT;
+          SQL
+
+      - run: npm run migrate
+      - run: npm run test:isolation
+      - run: node scripts/verify-isolation.mjs
+
+  build-and-push:
+    name: Build and push release images
+    runs-on: ubuntu-latest
+    needs: [verify]
+    outputs:
+      api_digest: ${{ steps.api.outputs.digest }}
+      web_digest: ${{ steps.web.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push api
+        id: api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-api:prod
+            ${{ env.IMAGE_PREFIX }}-api:${{ github.ref_name }}
+          cache-from: type=gha,scope=api
+
+      - name: Build and push web
+        id: web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://saas.example.com
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-web:prod
+            ${{ env.IMAGE_PREFIX }}-web:${{ github.ref_name }}
+          cache-from: type=gha,scope=web
+
+  deploy:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    # Configure this GitHub Environment with required reviewers. That is what turns the
+    # workflow into a gate rather than an automatic push to production.
+    environment:
+      name: production
+      url: https://saas.example.com
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PROD_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy-prod-${{ github.run_id }}
+
+      - name: Get cluster credentials
+        run: aws eks update-kubeconfig --name ${{ env.CLUSTER }} --region ${{ env.AWS_REGION }}
+
+      # Recorded before the change, so a rollback does not depend on guessing what was
+      # running or on `rollout undo` finding usable history.
+      - name: Record the currently deployed images
+        id: current
+        run: |
+          echo "api=$(kubectl get deploy saas-api -n ${{ env.NAMESPACE }} \
+            -o jsonpath='{.spec.template.spec.containers[0].image}')" >> "$GITHUB_OUTPUT"
+          echo "web=$(kubectl get deploy saas-web -n ${{ env.NAMESPACE }} \
+            -o jsonpath='{.spec.template.spec.containers[0].image}')" >> "$GITHUB_OUTPUT"
+
+      - name: Pin images by digest
+        working-directory: infra/k8s/overlays/prod
+        run: |
+          kustomize edit set image \
+            ghcr.io/cgainsworks/sw-saas-platform-api=${{ env.IMAGE_PREFIX }}-api@${{ needs.build-and-push.outputs.api_digest }} \
+            ghcr.io/cgainsworks/sw-saas-platform-web=${{ env.IMAGE_PREFIX }}-web@${{ needs.build-and-push.outputs.web_digest }}
+
+      - name: Run migrations
+        run: |
+          kubectl delete job saas-migrate -n ${{ env.NAMESPACE }} --ignore-not-found
+          kubectl apply -n ${{ env.NAMESPACE }} -f <(kubectl kustomize infra/k8s/overlays/prod | \
+            yq 'select(.kind == "Job")')
+          kubectl wait --for=condition=complete job/saas-migrate \
+            -n ${{ env.NAMESPACE }} --timeout=600s
+
+      - name: Show migration output
+        if: always()
+        run: kubectl logs job/saas-migrate -n ${{ env.NAMESPACE }} --tail=200 || true
+
+      - name: Apply manifests
+        run: kubectl apply -k infra/k8s/overlays/prod
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/saas-api -n ${{ env.NAMESPACE }} --timeout=600s
+          kubectl rollout status deployment/saas-web -n ${{ env.NAMESPACE }} --timeout=600s
+
+      - name: Smoke test
+        env:
+          API_URL: https://saas.example.com
+          WEB_URL: https://saas.example.com
+          IDP_URL: https://auth.saas.example.com
+        run: node scripts/smoke-test.mjs
+
+      - name: Roll back on failure
+        if: failure()
+        run: |
+          echo "::error::Production deploy failed. Rolling back to the previous images."
+          kubectl set image deployment/saas-api api=${{ steps.current.outputs.api }} -n ${{ env.NAMESPACE }} || true
+          kubectl set image deployment/saas-web web=${{ steps.current.outputs.web }} -n ${{ env.NAMESPACE }} || true
+          kubectl rollout status deployment/saas-api -n ${{ env.NAMESPACE }} --timeout=300s || true
+          echo "::warning::Rolled back. NOTE: schema migrations are forward-only and are NOT reverted."
+          echo "::warning::If the failure was caused by a migration, see docs/runbook.md#failed-migration."

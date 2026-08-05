@@ -1,0 +1,43 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: saas
+  namespace: saas
+  annotations:
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:eu-west-2:000000000000:certificate/REPLACE-ME
+    # AWS WAF in front of the ALB. Managed rule groups cover the generic scanning traffic
+    # that would otherwise reach the API and burn rate-limit budget.
+    alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:eu-west-2:000000000000:regional/webacl/REPLACE-ME
+    alb.ingress.kubernetes.io/load-balancer-attributes: >-
+      idle_timeout.timeout_seconds=60,
+      access_logs.s3.enabled=true,
+      access_logs.s3.bucket=saas-prod-alb-logs
+spec:
+  rules:
+    - host: saas.example.com
+      http:
+        paths:
+          - path: /v1
+            pathType: Prefix
+            backend:
+              service:
+                name: saas-api
+                port: { number: 80 }
+          - path: /graphql
+            pathType: Prefix
+            backend:
+              service:
+                name: saas-api
+                port: { number: 80 }
+          - path: /.well-known
+            pathType: Prefix
+            backend:
+              service:
+                name: saas-api
+                port: { number: 80 }
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: saas-web
+                port: { number: 80 }

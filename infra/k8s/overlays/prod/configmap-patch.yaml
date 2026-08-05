@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: saas-api-config
+  namespace: saas
+data:
+  LOG_LEVEL: info
+  JWT_ISSUER: https://api.saas.example.com
+  OIDC_ISSUER: https://auth.saas.example.com
+  OIDC_REDIRECT_URI: https://api.saas.example.com/v1/auth/callback
+  WEB_ORIGIN: https://saas.example.com
+  # Off in production. Introspection is a convenience for developers and an equally good
+  # map of the attack surface for everyone else.
+  GRAPHQL_INTROSPECTION: 'false'
+  # 3 replicas x 10 = 30 connections, comfortably under db.t4g.small's max_connections
+  # (~170). Raise both together, never the pool alone.
+  PGPOOL_MAX: '10'
+  RATE_LIMIT_MAX: '600'

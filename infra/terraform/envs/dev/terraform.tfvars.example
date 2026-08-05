@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars and edit. terraform.tfvars is gitignored.
+#
+# Do NOT put the OIDC client secret here. Pass it in the environment instead:
+#   export TF_VAR_oidc_client_secret='...'
+
+region = "eu-west-2"
+
+# Narrow this to your own address before leaving a cluster running.
+#   curl -s https://checkip.amazonaws.com
+kubernetes_api_allowed_cidrs = ["0.0.0.0/0"]

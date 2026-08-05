@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: saas
+  labels:
+    name: saas
+    # Enforce the restricted Pod Security Standard: no privilege escalation, no running
+    # as root, no host namespaces, seccomp required. `enforce` rejects offending pods
+    # outright rather than only warning, which is the difference between a policy and a
+    # suggestion.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

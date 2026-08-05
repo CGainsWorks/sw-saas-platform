@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: saas-api-config
+  namespace: saas
+data:
+  LOG_LEVEL: debug
+  JWT_ISSUER: https://api.dev.saas.example.com
+  OIDC_ISSUER: https://auth.dev.saas.example.com
+  OIDC_REDIRECT_URI: https://api.dev.saas.example.com/v1/auth/callback
+  WEB_ORIGIN: https://dev.saas.example.com
+  # On in dev: the schema explorer is genuinely useful while developing against it.
+  GRAPHQL_INTROSPECTION: 'true'
+  # A single small replica against a db.t4g.micro. Its max_connections is 87 by default,
+  # so a large pool here would exhaust the database rather than help.
+  PGPOOL_MAX: '5'

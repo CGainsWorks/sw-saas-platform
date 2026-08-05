@@ -1,0 +1,134 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: saas-api
+  namespace: saas
+  labels:
+    app.kubernetes.io/name: saas-api
+    app.kubernetes.io/component: api
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: saas-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Never drop below the current replica count during a rollout. With
+      # maxUnavailable > 0 a deploy briefly halves capacity, which on a two-replica
+      # service means running on one pod.
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: saas-api
+        app.kubernetes.io/component: api
+    spec:
+      serviceAccountName: saas-api
+      # Spread replicas across nodes so a single node failure cannot take out the service.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: saas-api
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: ghcr.io/cgainsworks/sw-saas-platform-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 4000
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ['ALL']
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: '4000'
+            - name: LOG_LEVEL
+              value: info
+            # Everything below comes from the secret External Secrets syncs out of AWS
+            # Secrets Manager. Nothing sensitive is ever written into a manifest.
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: saas-api-secrets, key: DATABASE_URL }
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef: { name: saas-api-secrets, key: REDIS_URL }
+            - name: JWT_PRIVATE_KEY_B64
+              valueFrom:
+                secretKeyRef: { name: saas-api-secrets, key: JWT_PRIVATE_KEY_B64 }
+            - name: JWT_PUBLIC_KEY_B64
+              valueFrom:
+                secretKeyRef: { name: saas-api-secrets, key: JWT_PUBLIC_KEY_B64 }
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: { name: saas-api-secrets, key: OIDC_CLIENT_SECRET }
+          envFrom:
+            - configMapRef:
+                name: saas-api-config
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              # No CPU limit on purpose. A CPU limit throttles the container even when the
+              # node has spare capacity, which shows up as unexplained p99 latency. The
+              # request is what governs scheduling and fair share; the limit only adds
+              # throttling. Memory IS limited, because memory is not compressible and an
+              # unbounded pod takes the node down with it.
+              memory: 512Mi
+          # Liveness checks only that the process is alive. It deliberately does not touch
+          # Postgres or Redis: a database outage should not make the kubelet restart every
+          # pod, which turns a recoverable dependency failure into a crash loop.
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Readiness DOES check dependencies, so a pod that cannot serve is pulled from
+          # the Service endpoints without being killed.
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Gives a slow first boot (migrations checked, keys loaded) up to 60s before the
+          # liveness probe starts counting failures.
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 3
+            failureThreshold: 20
+          lifecycle:
+            preStop:
+              exec:
+                # Endpoint removal and the SIGTERM race each other: the pod can receive
+                # SIGTERM while the load balancer is still sending it traffic. Sleeping
+                # first lets the endpoint propagate, then the app's own graceful shutdown
+                # drains what is in flight. terminationGracePeriodSeconds must exceed
+                # this sleep plus the drain timeout.
+                command: ['sh', '-c', 'sleep 5']
+          volumeMounts:
+            # readOnlyRootFilesystem is on, so anything that needs to write needs an
+            # explicit emptyDir.
+            - name: tmp
+              mountPath: /tmp
+      terminationGracePeriodSeconds: 30
+      volumes:
+        - name: tmp
+          emptyDir: {}

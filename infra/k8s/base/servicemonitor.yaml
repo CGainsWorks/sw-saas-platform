@@ -1,0 +1,31 @@
+# Tells the Prometheus operator (kube-prometheus-stack) to scrape the API.
+#
+# The alert rules are the SAME FILES as the local demo uses — observability/alerts/*.yml,
+# loaded into a PrometheusRule by the deploy pipeline. An alert that only exists in
+# production has never actually been tested; keeping one copy means the expressions are
+# exercised every time someone runs the demo.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: saas-api
+  namespace: saas
+  labels:
+    # Must match the operator's serviceMonitorSelector, or it is silently ignored.
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames: [saas]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: saas-api
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      metricRelabelings:
+        # Node's default metrics are voluminous and rarely actionable. Dropping them at
+        # scrape time keeps the series count — and the Prometheus bill — down.
+        - sourceLabels: [__name__]
+          regex: 'saas_api_nodejs_(gc|heap_space).*'
+          action: drop

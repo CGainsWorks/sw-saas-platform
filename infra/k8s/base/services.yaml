@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: saas-api
+  namespace: saas
+  labels:
+    app.kubernetes.io/name: saas-api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: saas-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: saas-web
+  namespace: saas
+  labels:
+    app.kubernetes.io/name: saas-web
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: saas-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: saas
+
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - configmap.yaml
+  - externalsecret.yaml
+  - migration-job.yaml
+  - api-deployment.yaml
+  - web-deployment.yaml
+  - services.yaml
+  - ingress.yaml
+  - autoscaling.yaml
+  - networkpolicy.yaml
+  - servicemonitor.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: sw-saas-platform
+  app.kubernetes.io/managed-by: kustomize
+
+images:
+  # Tags are replaced per overlay, and by CI with the immutable digest of the image it
+  # just built. `latest` here is a placeholder that never reaches a cluster.
+  - name: ghcr.io/cgainsworks/sw-saas-platform-api
+    newTag: latest
+  - name: ghcr.io/cgainsworks/sw-saas-platform-web
+    newTag: latest
