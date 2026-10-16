@@ -81,15 +81,15 @@ resource "aws_elasticache_replication_group" "this" {
   automatic_failover_enabled = var.replica_count > 0
   multi_az_enabled           = var.replica_count > 0
 
-  subnet_group_name  = aws_elasticache_subnet_group.this.name
-  security_group_ids = [aws_security_group.this.id]
+  subnet_group_name    = aws_elasticache_subnet_group.this.name
+  security_group_ids   = [aws_security_group.this.id]
   parameter_group_name = aws_elasticache_parameter_group.this.name
 
   at_rest_encryption_enabled = true
   transit_encryption_enabled = true
   # AUTH on top of TLS. The token goes to Secrets Manager and reaches the pod through
   # External Secrets, never into a manifest.
-  auth_token                 = var.auth_token
+  auth_token = var.auth_token
 
   # A cache. See the module header.
   snapshot_retention_limit = var.snapshot_retention_limit

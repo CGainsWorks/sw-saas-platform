@@ -139,7 +139,7 @@ module "rds" {
   deletion_protection = true
   skip_final_snapshot = false
 
-  secret_recovery_window_days = 30
+  secret_recovery_window_days  = 30
   performance_insights_enabled = true
 
   kms_key_arn = aws_kms_key.this.arn

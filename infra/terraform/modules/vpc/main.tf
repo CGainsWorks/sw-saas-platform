@@ -37,8 +37,8 @@ data "aws_availability_zones" "available" {
 }
 
 resource "aws_vpc" "this" {
-  cidr_block           = var.cidr_block
-  enable_dns_support   = true
+  cidr_block         = var.cidr_block
+  enable_dns_support = true
   # Required by EKS: nodes and pods resolve service endpoints by name.
   enable_dns_hostnames = true
 
@@ -243,10 +243,10 @@ resource "aws_iam_role_policy" "flow_logs" {
 resource "aws_flow_log" "this" {
   count = var.enable_flow_logs ? 1 : 0
 
-  vpc_id               = aws_vpc.this.id
-  traffic_type         = "REJECT"
-  iam_role_arn         = aws_iam_role.flow_logs[0].arn
-  log_destination      = aws_cloudwatch_log_group.flow_logs[0].arn
+  vpc_id                   = aws_vpc.this.id
+  traffic_type             = "REJECT"
+  iam_role_arn             = aws_iam_role.flow_logs[0].arn
+  log_destination          = aws_cloudwatch_log_group.flow_logs[0].arn
   max_aggregation_interval = 600
 
   tags = merge(local.tags, { Name = "${var.name}-flow-logs" })

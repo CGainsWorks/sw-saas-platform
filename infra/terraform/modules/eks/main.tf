@@ -130,8 +130,8 @@ resource "aws_eks_cluster" "this" {
     # Public endpoint access, restricted by CIDR. Fully private would need a bastion or
     # VPN to run kubectl, which is the right answer for production and overkill here —
     # the honest trade-off is recorded in docs/architecture.md.
-    endpoint_public_access  = var.endpoint_public_access
-    public_access_cidrs     = var.public_access_cidrs
+    endpoint_public_access = var.endpoint_public_access
+    public_access_cidrs    = var.public_access_cidrs
   }
 
   # audit and authenticator are the two that answer "who did that" after an incident.
@@ -210,7 +210,7 @@ resource "aws_eks_node_group" "this" {
   node_group_name = "${var.cluster_name}-default"
   node_role_arn   = aws_iam_role.nodes.arn
   # Private only. Worker nodes have no public address; ingress arrives via the ALB.
-  subnet_ids      = var.private_subnet_ids
+  subnet_ids = var.private_subnet_ids
 
   instance_types = var.node_instance_types
   capacity_type  = var.node_capacity_type
