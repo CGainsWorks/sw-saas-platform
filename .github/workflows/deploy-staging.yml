@@ -1,8 +1,10 @@
 name: Deploy staging
 
+# Manual only. No AWS account is connected to this repository, so the deploy role secret
+# does not exist and the target cluster is not running. Triggering on every push to main
+# would only produce a red run. Run it by hand once the infrastructure and the
+# AWS_DEPLOY_ROLE_ARN secret are in place.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -18,7 +20,10 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+  # Container registries require lower-case repository names and github.repository keeps
+  # the owner's capitals. Expressions have no lower() function, so the name is spelt out;
+  # it matches the image names in infra/k8s.
+  IMAGE_PREFIX: ghcr.io/cgainsworks/sw-saas-platform
   AWS_REGION: eu-west-2
   CLUSTER: saas-dev
   NAMESPACE: saas

@@ -352,8 +352,14 @@ columns.
 
 ## Deploy and roll back
 
-Deploys are automated: push to `main` → staging; push a `v*.*.*` tag → production, behind
-a GitHub Environment approval.
+Deploys are manual. Run `Deploy staging` from the Actions tab (`workflow_dispatch`) to
+deploy `main` to the dev cluster, and `Deploy production` with an existing `v*.*.*` tag as
+its input to release that tag behind a GitHub Environment approval. Neither runs on push.
+
+**Not exercised.** No AWS account is connected to this repository: the
+`AWS_DEPLOY_ROLE_ARN` and `AWS_PROD_DEPLOY_ROLE_ARN` secrets do not exist and no cluster is
+running, so neither workflow has ever completed. They need `terraform apply` and those
+secrets before the first run.
 
 ```bash
 # Roll back to the previous ReplicaSet.

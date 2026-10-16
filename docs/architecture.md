@@ -208,6 +208,7 @@ The brief asks for no stub presented as working, so:
 | Kustomize overlays | **Validated.** `kubectl kustomize` builds both, 20 resources each |
 | Terraform | **Written, never applied.** No AWS account has run this. `terraform validate` runs in CI; nothing here has been proven against real AWS behaviour |
 | Production environment | **Written, never deployed.** It is reviewable as code, not running somewhere |
+| Deploy workflows | **Manual only, never exercised.** `deploy-staging.yml` and `deploy-prod.yml` run only from `workflow_dispatch`. No AWS account or deploy role secrets are connected, so neither has run |
 | SLOs | **Defined and instrumented, not operated.** Alert rules parse and fire locally; there is no production traffic to measure and no on-call rotation |
 | Silo tenancy path | **Schema-supported, not exercised.** `shard_dsn` is null for every tenant |
 | NetworkPolicies | **Written; enforcement not verified.** The AWS VPC CNI does not enforce them by default |

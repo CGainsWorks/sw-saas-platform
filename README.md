@@ -241,6 +241,7 @@ Per the brief: no stub presented as working.
 | Kustomize overlays | ✅ **Validated** — `kubectl kustomize` builds both, 20 resources each |
 | Terraform | ⚠️ **Written, never applied.** No AWS account has run it |
 | Production environment | ⚠️ **Written, never deployed** |
+| Deploy workflows | ⚠️ **Manual only, never run.** Both start from `workflow_dispatch`; no AWS account or deploy secrets are connected |
 | SLOs | ⚠️ **Defined and instrumented, not operated** — no production traffic, no on-call |
 | Silo tenancy path | ⚠️ **Schema-supported, not exercised** |
 | NetworkPolicies | ⚠️ **Written; enforcement not verified** (the AWS VPC CNI does not enforce by default) |
