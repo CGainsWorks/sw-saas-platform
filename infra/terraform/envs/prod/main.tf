@@ -50,7 +50,7 @@ locals {
     Project     = "sw-saas-platform"
     Environment = local.environment
     ManagedBy   = "terraform"
-    CostCenter  = "portfolio"
+    CostCenter  = "saas-platform"
   }
 }
 
