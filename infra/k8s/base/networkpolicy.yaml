@@ -114,3 +114,34 @@ spec:
       ports:
         - protocol: TCP
           port: 4000
+---
+# The migration Job. Without this the default-deny above blocks its DNS lookup and its
+# connection to Postgres, and the Job never completes: found by running the dev overlay on
+# a policy-enforcing cluster (scripts/kind/up.sh), where it fails exactly as it would on a
+# real one. It needs Postgres and DNS, and nothing else: no Redis, no ingress at all.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: saas-migrate
+  namespace: saas
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: saas-migrate
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+      ports:
+        - protocol: TCP
+          port: 5432
