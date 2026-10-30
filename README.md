@@ -115,6 +115,49 @@ vacuous. This is the check that makes it mean something, and it runs in CI.
 
 ---
 
+## Kubernetes, locally
+
+The Kubernetes layer is not only rendered; CI runs it. The `kind` job creates a kind
+cluster with the default CNI replaced by Calico, so NetworkPolicies are enforced, and
+deploys the **dev overlay** with images built from the commit:
+
+```bash
+scripts/kind/up.sh              # cluster, Calico, data stores, LocalStack, External Secrets, dev overlay
+scripts/kind/netpol-check.sh    # NetworkPolicy allow and deny checks
+scripts/kind/isolation-tests.sh # the 68 isolation tests against the in-cluster API
+scripts/kind/up.sh --down
+```
+
+| AWS piece | Stand-in on kind |
+|---|---|
+| EKS with an enforcing CNI | kind v0.33.0, node v1.35.8, Calico v3.32.3 |
+| RDS for PostgreSQL, ElastiCache | `postgres:16.4-alpine` and `redis:7.4-alpine` in a `data` namespace, inside the 10.0.0.0/8 range the policies allow |
+| Secrets Manager | LocalStack 4.14.0 (Community, pinned by digest) |
+| External Secrets with IRSA | External Secrets Operator 2.14.0 (Helm), the base `ExternalSecret` unchanged; only the `SecretStore` auth is swapped from IRSA to static LocalStack keys (`infra/k8s/overlays/kind`) |
+
+The NetworkPolicy check connects to Postgres and Redis from inside pods: the API pod must
+connect, the web pod and an unlabelled pod in `saas` must not, and the same unlabelled pod
+in a namespace without policies must connect, which shows the denials are the policy and
+not the network. Running the overlay this way found a real bug: default-deny also blocked
+the migration Job, which had no policy of its own and could never have reached the
+database. It now has one.
+
+All versions are pinned in [`infra/k8s/kind/versions.env`](infra/k8s/kind/versions.env).
+
+## Load test
+
+```bash
+RUNNER_LABEL="describe this machine" loadtest/run.sh   # or: Actions > Load test > Run workflow
+```
+
+A basic [k6](loadtest/k6/api.js) test (grafana/k6 1.8.2) against the API in docker compose,
+run as `NODE_ENV=production`: each iteration is `GET /v1/projects`, `GET /v1/tasks` and a
+nested GraphQL query as one tenant. It is a manual workflow, because a shared CI runner
+measures the runner as much as the code. Results are committed only with the machine they
+came from: see [`loadtest/results/`](loadtest/results/).
+
+---
+
 ## How the isolation actually works
 
 The full argument, including the models rejected and why, is in
@@ -177,10 +220,12 @@ packages/
   shared-types/ One source of truth for the wire format
 infra/
   terraform/    VPC, EKS, RDS, ElastiCache — modules + dev/prod environments
-  k8s/          Kustomize base and overlays
+  k8s/          Kustomize base and overlays (dev, prod, and kind for local runs)
 observability/  Prometheus config, alert rules, Grafana dashboard
 docs/           The reasoning
-scripts/        setup, demo, isolation mutation check, smoke test, cost estimate
+scripts/        setup, demo, isolation mutation check, smoke test, cost estimate,
+               kind/ (local Kubernetes run, NetworkPolicy checks)
+loadtest/      k6 load test, its compose override and labelled results
 ```
 
 **Stack:** TypeScript · Next.js 15 · Fastify 5 · PostgreSQL 16 · Redis 7 · GraphQL Yoga ·
@@ -232,20 +277,21 @@ keep billing.
 
 ## Honest status
 
-Per the brief: no stub presented as working.
+Nothing here is a stub presented as working.
 
 | | |
 |---|---|
 | Local stack (`docker compose up`) | ✅ **Runs.** Verified end to end — 28 smoke checks including a real OAuth2 flow |
-| Isolation tests | ✅ **68 passing** against real PostgreSQL, and mutation-checked |
-| Kustomize overlays | ✅ **Validated** — `kubectl kustomize` builds both, 20 resources each |
+| Isolation tests | ✅ **68 passing** against real PostgreSQL, and mutation-checked. The same 68 also pass against the API deployed in kind |
+| Kustomize overlays | ✅ **Deployed on kind in CI.** The dev overlay runs on a kind cluster with Calico: secrets synced, migration Job complete, API and web ready. Dev and prod both build (21 resources each) |
 | Terraform | ⚠️ **Written, never applied.** No AWS account has run it |
 | Production environment | ⚠️ **Written, never deployed** |
 | Deploy workflows | ⚠️ **Manual only, never run.** Both start from `workflow_dispatch`; no AWS account or deploy secrets are connected |
 | SLOs | ⚠️ **Defined and instrumented, not operated** — no production traffic, no on-call |
 | Silo tenancy path | ⚠️ **Schema-supported, not exercised** |
-| NetworkPolicies | ⚠️ **Written; enforcement not verified** (the AWS VPC CNI does not enforce by default) |
-| Load testing | ❌ **None.** The 0.3 ms transaction overhead is one dev machine |
+| NetworkPolicies | ✅ **Enforcement proven on kind with Calico** (6 allow and deny checks in CI). Not verified on EKS, where the VPC CNI does not enforce them by default |
+| External Secrets | ✅ **Exercised against an emulator.** The External Secrets Operator syncs the app secret from LocalStack Secrets Manager; IRSA to real AWS is not exercised |
+| Load testing | ⚠️ **Basic k6 test, manual workflow.** One labelled result from a GitHub-hosted runner in [`loadtest/results/`](loadtest/results/); nothing at production scale |
 
 The gap between "the local stack works and is tested" and "the cloud infrastructure works"
 is real. The first is one command away; the second is reviewed, type-checked code that has

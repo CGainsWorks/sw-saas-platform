@@ -240,5 +240,6 @@ Beyond the [tenancy-specific ones](multi_tenancy.md#8-known-limitations):
 - **The `tenants` and `users` tables rely on application discipline, not RLS.** They are
   read by primary key with ids from verified claims, but they are where the database is
   not the backstop.
-- **Load has never been tested.** The 0.3 ms transaction overhead is measured on one dev
-  machine. Nothing here has seen concurrent traffic at scale.
+- **Load testing is basic.** One k6 run on a GitHub-hosted runner (20 virtual users, one
+  tenant, reads only; [result](../loadtest/results/github-hosted-ubuntu26-2026-10-30.md)).
+  Nothing here has seen concurrent traffic at production scale.
