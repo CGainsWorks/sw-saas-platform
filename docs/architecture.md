@@ -204,7 +204,7 @@ No stub is presented as working, so:
 | | Status |
 |---|---|
 | Local stack, `docker compose up` | **Runs.** Verified end to end by `scripts/smoke-test.mjs` — 28 checks including a real OAuth2 flow and cross-tenant attacks over HTTP and GraphQL |
-| Isolation tests | **68 passing** against real PostgreSQL, and mutation-checked: `scripts/verify-isolation.mjs` proves they go red when a policy is removed. CI also runs them against the API deployed in kind |
+| Isolation tests | **68 passing** against real PostgreSQL and mutation-checked: `scripts/verify-isolation.mjs` proves they go red when a policy is removed. CI also runs them against the API deployed in kind |
 | Kustomize overlays | **Deployed on kind in CI.** The dev overlay runs on kind with Calico (`scripts/kind/up.sh`); dev and prod both build, 21 resources each |
 | Terraform | **Written, never applied.** No AWS account has run this. `terraform validate` runs in CI; nothing here has been proven against real AWS behaviour |
 | Production environment | **Written, never deployed.** It is reviewable as code, not running somewhere |

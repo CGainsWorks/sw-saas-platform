@@ -18,7 +18,7 @@ let app: FastifyInstance | null = null;
  * deployed in a kind cluster (production image, NODE_ENV=production, secrets from External
  * Secrets), with the database and Redis checks going to the cluster's Postgres and Redis.
  *
- * Only `inject` is emulated, and only the parts of it these suites use: method, url,
+ * Only `inject` is emulated and only the parts of it these suites use: method, url,
  * headers and a string or JSON payload in; statusCode, headers, body and json() out.
  */
 interface RemoteInjectOptions {

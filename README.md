@@ -136,7 +136,7 @@ scripts/kind/up.sh --down
 | External Secrets with IRSA | External Secrets Operator 2.14.0 (Helm), the base `ExternalSecret` unchanged; only the `SecretStore` auth is swapped from IRSA to static LocalStack keys (`infra/k8s/overlays/kind`) |
 
 The NetworkPolicy check connects to Postgres and Redis from inside pods: the API pod must
-connect, the web pod and an unlabelled pod in `saas` must not, and the same unlabelled pod
+connect; the web pod and an unlabelled pod in `saas` must not; the same unlabelled pod
 in a namespace without policies must connect, which shows the denials are the policy and
 not the network. Running the overlay this way found a real bug: default-deny also blocked
 the migration Job, which had no policy of its own and could never have reached the
@@ -220,7 +220,7 @@ packages/
   shared-types/ One source of truth for the wire format
 infra/
   terraform/    VPC, EKS, RDS, ElastiCache — modules + dev/prod environments
-  k8s/          Kustomize base and overlays (dev, prod, and kind for local runs)
+  k8s/          Kustomize base and overlays (dev, prod and kind for local runs)
 observability/  Prometheus config, alert rules, Grafana dashboard
 docs/           The reasoning
 scripts/        setup, demo, isolation mutation check, smoke test, cost estimate,
@@ -282,7 +282,7 @@ Nothing here is a stub presented as working.
 | | |
 |---|---|
 | Local stack (`docker compose up`) | ✅ **Runs.** Verified end to end — 28 smoke checks including a real OAuth2 flow |
-| Isolation tests | ✅ **68 passing** against real PostgreSQL, and mutation-checked. The same 68 also pass against the API deployed in kind |
+| Isolation tests | ✅ **68 passing** against real PostgreSQL and mutation-checked. The same 68 also pass against the API deployed in kind |
 | Kustomize overlays | ✅ **Deployed on kind in CI.** The dev overlay runs on a kind cluster with Calico: secrets synced, migration Job complete, API and web ready. Dev and prod both build (21 resources each) |
 | Terraform | ⚠️ **Written, never applied.** No AWS account has run it |
 | Production environment | ⚠️ **Written, never deployed** |

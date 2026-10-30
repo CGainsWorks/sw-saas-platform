@@ -12,11 +12,11 @@ locally and exercised in CI, or stated below as not exercised.
   including a real OAuth2 flow) runs against it by hand; it is not in CI.
 - **Tenant isolation tests.** 68 tests in `apps/api/tests/isolation/` (15 GraphQL, 17 HTTP,
   13 RLS invariants, 11 RLS reads, 12 RLS writes), run in CI against real PostgreSQL 16.4
-  and Redis 7.4 service containers, and mutation-checked by `scripts/verify-isolation.mjs`
+  and Redis 7.4 service containers and mutation-checked by `scripts/verify-isolation.mjs`
   (each tenant-owned table's policy is removed in turn and the suite must go red).
 - **Kubernetes layer on kind (CI job `kind`).** `scripts/kind/up.sh` creates a kind
   cluster (kind v0.33.0, node v1.35.8) with the default CNI replaced by Calico v3.32.3,
-  builds the API and web images from the commit, and deploys the **dev overlay** through
+  builds the API and web images from the commit and deploys the **dev overlay** through
   `infra/k8s/overlays/kind`. The ExternalSecret syncs, the migration Job completes and
   both Deployments become ready under the restricted Pod Security Standard.
 - **NetworkPolicy enforcement.** `scripts/kind/netpol-check.sh` makes 6 TCP checks from
@@ -25,12 +25,12 @@ locally and exercised in CI, or stated below as not exercised.
   policies can (the control). All 6 pass in CI.
 - **Isolation tests against the in-cluster API.** `scripts/kind/isolation-tests.sh` runs the
   same 68 tests with the HTTP and GraphQL suites sent to the API deployed in kind
-  (production image, `NODE_ENV=production`, secrets from External Secrets), and the RLS
+  (production image, `NODE_ENV=production`, secrets from External Secrets) and the RLS
   suites against the in-cluster Postgres. All 68 pass in CI.
 - **Secrets Manager and External Secrets, emulated.** LocalStack 4.14.0 (the last
   Community release, pinned by digest) provides Secrets Manager inside the cluster. The
   External Secrets Operator 2.14.0 (Helm) has its Secrets Manager and STS endpoints
-  pointed at LocalStack, and syncs `saas-dev/app` into `saas-api-secrets` through the
+  pointed at LocalStack and syncs `saas-dev/app` into `saas-api-secrets` through the
   base `ExternalSecret`, unchanged. Only the `SecretStore` auth block differs from dev:
   static LocalStack keys instead of IRSA. This is LocalStack, not the operator's fake
   provider.
@@ -67,9 +67,9 @@ locally and exercised in CI, or stated below as not exercised.
   Ingress object is accepted and nothing serves it. The tests reach the API through
   `kubectl port-forward`.
 - **The API ingress policy admits any pod in 10.0.0.0/8.** It is written for ALB traffic
-  from the VPC range, but on a cluster whose pods also live in that range it lets every
+  from the VPC range; on a cluster whose pods also live in that range it lets every
   pod reach the API on port 4000.
 - **The dev HorizontalPodAutoscaler overrides the dev replica count.** The dev overlay sets
-  one replica, but the base HPA has `minReplicas: 2`, so two pods run.
+  one replica; the base HPA has `minReplicas: 2`, so two pods run.
 - **The load test is basic.** One tenant, reads only, a shared CI runner, a single run.
   The numbers say nothing about production capacity.

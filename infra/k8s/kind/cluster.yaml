@@ -1,7 +1,7 @@
 # Local cluster for exercising the Kubernetes layer: scripts/kind/up.sh and the CI kind job.
 #
 # kind's default CNI is switched off so that Calico can be installed instead. The point of
-# this cluster is to prove the NetworkPolicies are enforced, and that needs a CNI whose
+# this cluster is to prove the NetworkPolicies are enforced, which needs a CNI whose
 # enforcement is the same code path a production cluster would run.
 #
 # The pod subnet sits inside 10.0.0.0/8 on purpose. The base policies allow the API to

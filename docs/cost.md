@@ -69,7 +69,7 @@ reduce.** That is the EKS control plane ($73.00), the NAT gateway ($32.85) and t
 
 That ratio is the honest argument against EKS for a project of this size, and it is why
 [cheaper alternatives](#cheaper-ways-to-run-this) are listed below rather than glossed
-over. EKS is here because it is the deployment target the platform is designed for, and the
+over. EKS is here because it is the deployment target the platform is designed for and the
 architecture is the point.
 
 ### Where dev already saves money

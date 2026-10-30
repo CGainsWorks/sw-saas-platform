@@ -4,7 +4,7 @@
 #
 # Runs the API the way the cluster does (NODE_ENV=production, JSON logs at info) with a
 # fixed signing key, so loadtest/mint-token.mjs can issue a token the API accepts. The
-# rate limit is raised because every virtual user shares one tenant, and the point is to
+# rate limit is raised because every virtual user shares one tenant and the point is to
 # measure the request path rather than the limiter's 429s.
 services:
   api:
