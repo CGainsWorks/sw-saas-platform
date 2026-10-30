@@ -1,0 +1,56 @@
+name: Load test
+
+# Manual only. A load test on a shared CI runner measures the runner as much as the
+# code, so it is run on demand and its result is always labelled with the runner it came
+# from (see loadtest/results/).
+on:
+  workflow_dispatch:
+    inputs:
+      vus:
+        description: Peak virtual users
+        default: '20'
+      duration:
+        description: How long to hold the peak (k6 duration, e.g. 60s)
+        default: '60s'
+
+concurrency:
+  group: loadtest
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  k6:
+    name: k6 against the API in docker compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Describe the runner
+        run: |
+          cpu=$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | xargs)
+          mem=$(awk '/MemTotal/ {printf "%.1f", $2/1048576}' /proc/meminfo)
+          echo "RUNNER_LABEL=GitHub-hosted runner, image ${ImageOS:-unknown} ${ImageVersion:-unknown}, $(nproc) vCPU ($cpu), $mem GiB RAM" >> "$GITHUB_ENV"
+
+      - name: Run the load test
+        run: loadtest/run.sh
+        env:
+          VUS: ${{ inputs.vus }}
+          DURATION: ${{ inputs.duration }}
+
+      - name: Add the summary to the run page
+        if: always()
+        run: cat .loadtest/summary.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload the summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-summary
+          path: |
+            .loadtest/summary.md
+            .loadtest/summary.json
+          if-no-files-found: ignore
+          include-hidden-files: true

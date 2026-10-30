@@ -11,7 +11,8 @@ COMPOSE := docker compose
 
 .DEFAULT_GOAL := help
 .PHONY: help demo up down reset logs ps migrate seed test test-isolation verify-isolation \
-        typecheck build dev-api dev-web tf-init tf-plan tf-apply teardown clean
+        typecheck build dev-api dev-web kind-up kind-test kind-down loadtest \
+        tf-init tf-plan tf-apply teardown clean
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -78,6 +79,21 @@ test-isolation: deps ## Run only the cross-tenant isolation tests
 
 verify-isolation: deps ## Prove the isolation tests fail when RLS is removed
 	node scripts/verify-isolation.mjs
+
+## ------------------------------------------------------- kubernetes (kind)
+
+kind-up: ## Run the dev overlay on kind with Calico, External Secrets and LocalStack
+	scripts/kind/up.sh
+
+kind-test: ## NetworkPolicy checks and isolation tests against the in-cluster API
+	scripts/kind/netpol-check.sh
+	scripts/kind/isolation-tests.sh
+
+kind-down: ## Delete the kind cluster
+	scripts/kind/up.sh --down
+
+loadtest: ## k6 load test against the API in docker compose (set RUNNER_LABEL)
+	loadtest/run.sh
 
 ## ------------------------------------------------------------ infrastructure
 
