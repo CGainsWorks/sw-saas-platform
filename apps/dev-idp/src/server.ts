@@ -10,7 +10,7 @@ import { DEMO_USERS, findUser } from './users.js';
  *
  * WHY THIS EXISTS
  *
- * The brief asks for OAuth2, and for the whole thing to run from one command on a clean
+ * The platform needs OAuth2, and needs the whole thing to run from one command on a clean
  * machine. Those pull in opposite directions: a real flow needs a real provider, and
  * every off-the-shelf option is either a heavyweight JVM container that dominates the
  * demo's startup time and memory, or an external account the reader has to go and create.

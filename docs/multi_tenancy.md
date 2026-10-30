@@ -28,8 +28,7 @@ cell in that row false.
 
 ### Why pool
 
-- **Cost.** This is a portfolio project on an AWS account I pay for personally. Silo
-  means one RDS instance per tenant; at the smallest sane production instance
+- **Cost.** Silo means one RDS instance per tenant; at the smallest sane production instance
   (`db.t4g.small`, multi-AZ) that is roughly $50/month **per tenant**. Pool is one
   cluster regardless of tenant count. The cost model in [`cost.md`](cost.md) assumes
   pool; silo would make the demo unaffordable to run for more than a day.
@@ -268,14 +267,12 @@ and the schema is designed so this does not require a rewrite:
 
 This is implemented as far as the schema and the connection factory. **The silo path is
 not exercised — there is no second database in the demo, and `shard_dsn` is null for
-every seeded tenant.** I am flagging that rather than implying it is proven, since the
-brief asks for no stub presented as working.
+every seeded tenant.** It is flagged here rather than implied to be proven, because no stub
+should be presented as working.
 
 ---
 
 ## 8. Known limitations
-
-Stated honestly, per the brief.
 
 - **RLS has a query-planning cost.** Policies become predicates on every query. With
   `tenant_id` leading every relevant index the plans stay index-only, but I have not

@@ -231,7 +231,7 @@ endpoint to end up quietly more permissive than the REST API beside it.
 codes and constant-time client-secret comparison. The API performs a genuine exchange
 against it and genuinely verifies the resulting ID token.
 
-It exists because the brief wants OAuth2 *and* wants the whole thing to run from one
+It exists because the platform needs real OAuth2 *and* needs the whole thing to run from one
 command on a clean machine, and those pull in opposite directions — every off-the-shelf
 provider is either a heavyweight container that dominates the demo or an external account
 the reader has to create. Stubbing auth in development would mean the OAuth2 path is never

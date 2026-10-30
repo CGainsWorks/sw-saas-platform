@@ -1,8 +1,8 @@
 # Data model
 
-The brief asks for `erd.png`. This is a Mermaid diagram in Markdown instead, on purpose:
-it renders natively on GitHub, it diffs in review, and it keeps a binary out of the Git
-history — which the same brief asks for elsewhere. If a raster image is genuinely needed,
+This is a Mermaid diagram in Markdown rather than an `erd.png`, on purpose: it renders
+natively on GitHub, it diffs in review, and it keeps a binary out of the Git history. If
+a raster image is genuinely needed,
 `docs/render-erd.sh` produces one from this source.
 
 ---

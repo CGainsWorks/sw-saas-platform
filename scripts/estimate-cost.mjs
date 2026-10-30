@@ -2,9 +2,9 @@
 /**
  * AWS cost estimate for the dev and production environments.
  *
- * The brief requires every quantitative claim in the documentation to be reproducible
- * from a script in the repository. This is that script for docs/cost.md — the tables
- * there are this script's output, not hand arithmetic.
+ * Every quantitative claim in the documentation has to be reproducible from a script in
+ * the repository. This is that script for docs/cost.md: the tables there are this
+ * script's output, not hand arithmetic.
  *
  * It makes NO AWS API calls, so it costs nothing to run and works offline. The rate table
  * below is published on-demand pricing for eu-west-2 as of August 2026. When AWS changes

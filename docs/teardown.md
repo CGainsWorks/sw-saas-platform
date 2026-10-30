@@ -211,5 +211,5 @@ prevents surprise bills is deciding, before you apply, when you will destroy —
 the budget alert from [cost.md](cost.md#guardrails-worth-setting-up-first) so that being
 wrong about it is noisy rather than silent.
 
-For a portfolio project specifically: apply, capture the screenshots and `kubectl` output
+For a short-lived evaluation environment: apply, capture the screenshots and `kubectl` output
 you need as evidence, destroy the same day. That is about **$1**.

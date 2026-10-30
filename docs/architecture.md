@@ -199,19 +199,20 @@ and in the database.
 
 ## What is honest about the current state
 
-The brief asks for no stub presented as working, so:
+No stub is presented as working, so:
 
 | | Status |
 |---|---|
 | Local stack, `docker compose up` | **Runs.** Verified end to end by `scripts/smoke-test.mjs` — 28 checks including a real OAuth2 flow and cross-tenant attacks over HTTP and GraphQL |
-| Isolation tests | **68 passing** against real PostgreSQL, and mutation-checked: `scripts/verify-isolation.mjs` proves they go red when a policy is removed |
-| Kustomize overlays | **Validated.** `kubectl kustomize` builds both, 20 resources each |
+| Isolation tests | **68 passing** against real PostgreSQL, and mutation-checked: `scripts/verify-isolation.mjs` proves they go red when a policy is removed. CI also runs them against the API deployed in kind |
+| Kustomize overlays | **Deployed on kind in CI.** The dev overlay runs on kind with Calico (`scripts/kind/up.sh`); dev and prod both build, 21 resources each |
 | Terraform | **Written, never applied.** No AWS account has run this. `terraform validate` runs in CI; nothing here has been proven against real AWS behaviour |
 | Production environment | **Written, never deployed.** It is reviewable as code, not running somewhere |
 | Deploy workflows | **Manual only, never exercised.** `deploy-staging.yml` and `deploy-prod.yml` run only from `workflow_dispatch`. No AWS account or deploy role secrets are connected, so neither has run |
 | SLOs | **Defined and instrumented, not operated.** Alert rules parse and fire locally; there is no production traffic to measure and no on-call rotation |
 | Silo tenancy path | **Schema-supported, not exercised.** `shard_dsn` is null for every tenant |
-| NetworkPolicies | **Written; enforcement not verified.** The AWS VPC CNI does not enforce them by default |
+| NetworkPolicies | **Enforcement proven on kind with Calico** (`scripts/kind/netpol-check.sh`). Not verified on EKS, where the AWS VPC CNI does not enforce them by default |
+| External Secrets | **Exercised against LocalStack Secrets Manager** on kind. IRSA authentication to real AWS is not exercised |
 
 The gap between "the local stack works and is tested" and "the AWS infrastructure works"
 is real and is not papered over. The first is demonstrable in one command; the second is
