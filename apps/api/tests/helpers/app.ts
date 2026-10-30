@@ -11,9 +11,57 @@ const cfg = loadConfig();
 
 let app: FastifyInstance | null = null;
 
-/** One application instance per test file, driven through inject() rather than a socket. */
+/**
+ * Remote mode: when API_BASE_URL is set, the HTTP and GraphQL suites send the same
+ * requests over the network to an API that is already running, instead of building one
+ * in-process. scripts/kind/isolation-tests.sh uses this to run the suites against the API
+ * deployed in a kind cluster (production image, NODE_ENV=production, secrets from External
+ * Secrets), with the database and Redis checks going to the cluster's Postgres and Redis.
+ *
+ * Only `inject` is emulated, and only the parts of it these suites use: method, url,
+ * headers and a string or JSON payload in; statusCode, headers, body and json() out.
+ */
+interface RemoteInjectOptions {
+  method: string;
+  url: string;
+  headers?: Record<string, string>;
+  payload?: unknown;
+}
+
+function remoteApp(baseUrl: string): FastifyInstance {
+  const inject = async (opts: RemoteInjectOptions) => {
+    const headers: Record<string, string> = { ...(opts.headers ?? {}) };
+    let body: string | undefined;
+    if (typeof opts.payload === 'string') {
+      body = opts.payload;
+    } else if (opts.payload !== undefined) {
+      // inject() serialises an object payload and sets the content type; so does this.
+      body = JSON.stringify(opts.payload);
+      headers['content-type'] ??= 'application/json';
+    }
+    const res = await fetch(new URL(opts.url, baseUrl), { method: opts.method, headers, body });
+    const text = await res.text();
+    return {
+      statusCode: res.status,
+      headers: Object.fromEntries(res.headers.entries()),
+      body: text,
+      json: () => JSON.parse(text) as unknown,
+    };
+  };
+  return {
+    inject,
+    ready: async () => undefined,
+    close: async () => undefined,
+  } as unknown as FastifyInstance;
+}
+
+/**
+ * One application instance per test file, driven through inject() rather than a socket,
+ * or the remote API when API_BASE_URL is set.
+ */
 export async function testApp(): Promise<FastifyInstance> {
-  app ??= await buildApp();
+  const remote = process.env.API_BASE_URL;
+  app ??= remote ? remoteApp(remote) : await buildApp();
   await app.ready();
   return app;
 }
