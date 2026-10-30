@@ -38,3 +38,8 @@ kubeconfig
 docs/erd.png
 docs/erd.mmd
 
+
+# Local kind run (scripts/kind/up.sh): throwaway keys, downloaded manifests, port-forward logs.
+.kind/
+# Load test output (loadtest/run.sh); curated summaries are copied into loadtest/results/.
+.loadtest/

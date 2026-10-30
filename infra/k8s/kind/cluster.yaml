@@ -1,0 +1,20 @@
+# Local cluster for exercising the Kubernetes layer: scripts/kind/up.sh and the CI kind job.
+#
+# kind's default CNI is switched off so that Calico can be installed instead. The point of
+# this cluster is to prove the NetworkPolicies are enforced, and that needs a CNI whose
+# enforcement is the same code path a production cluster would run.
+#
+# The pod subnet sits inside 10.0.0.0/8 on purpose. The base policies allow the API to
+# reach Postgres and Redis by ipBlock 10.0.0.0/8 (the VPC range on EKS), so the in-cluster
+# stand-ins for RDS and ElastiCache must have addresses in that range for the same
+# policies to apply unchanged.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: saas
+networking:
+  disableDefaultCNI: true
+  podSubnet: 10.244.0.0/16
+  serviceSubnet: 10.96.0.0/16
+nodes:
+  # The node image is pinned by digest in versions.env and passed with --image.
+  - role: control-plane

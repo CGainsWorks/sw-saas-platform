@@ -1,0 +1,144 @@
+# Stand-ins for the managed services the dev overlay expects on AWS, for the kind cluster
+# only. Nothing in this file is part of any overlay that targets EKS.
+#
+#   data/postgres      emulates RDS for PostgreSQL (same major version as compose and CI)
+#   data/redis         emulates ElastiCache for Redis
+#   localstack/...     emulates AWS Secrets Manager for the External Secrets Operator
+#
+# They run in their own namespaces, outside `saas`, the way RDS and ElastiCache sit
+# outside the cluster in the VPC. The `saas` NetworkPolicies therefore reach them by
+# address (ipBlock 10.0.0.0/8), exactly as they would reach the real services.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: data
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: data
+  labels: { app: postgres }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16.4-alpine
+          env:
+            - { name: POSTGRES_USER, value: postgres }
+            - { name: POSTGRES_PASSWORD, value: postgres }
+            - { name: POSTGRES_DB, value: saas }
+          ports:
+            - { name: pg, containerPort: 5432 }
+          readinessProbe:
+            exec:
+              command: ['pg_isready', '-U', 'postgres', '-d', 'saas']
+            periodSeconds: 3
+          volumeMounts:
+            # Same init script docker compose mounts: creates the least-privilege
+            # app_user role. Generated into a ConfigMap from infra/postgres/init by
+            # scripts/kind/up.sh, so there is one copy of it.
+            - { name: init, mountPath: /docker-entrypoint-initdb.d, readOnly: true }
+            - { name: pgdata, mountPath: /var/lib/postgresql/data }
+      volumes:
+        - name: init
+          configMap: { name: postgres-init }
+        - name: pgdata
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: data
+spec:
+  selector: { app: postgres }
+  ports:
+    - { name: pg, port: 5432, targetPort: pg }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: data
+  labels: { app: redis }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: redis }
+  template:
+    metadata:
+      labels: { app: redis }
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.4-alpine
+          args: ['redis-server', '--save', '', '--appendonly', 'no']
+          ports:
+            - { name: redis, containerPort: 6379 }
+          readinessProbe:
+            exec:
+              command: ['redis-cli', 'ping']
+            periodSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: data
+spec:
+  selector: { app: redis }
+  ports:
+    - { name: redis, port: 6379, targetPort: redis }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: localstack
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: localstack
+  namespace: localstack
+  labels: { app: localstack }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: localstack }
+  template:
+    metadata:
+      labels: { app: localstack }
+    spec:
+      containers:
+        - name: localstack
+          # 4.14.0 is the last LocalStack Community release and runs without an account
+          # or auth token. Pinned by digest as well as tag.
+          image: localstack/localstack:4.14.0@sha256:3ebc37595918b8accb852f8048fef2aff047d465167edd655528065b07bc364a
+          env:
+            - { name: SERVICES, value: 'secretsmanager,sts' }
+            - { name: AWS_DEFAULT_REGION, value: eu-west-2 }
+          ports:
+            - { name: edge, containerPort: 4566 }
+          readinessProbe:
+            httpGet: { path: /_localstack/health, port: edge }
+            periodSeconds: 3
+            failureThreshold: 60
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: localstack
+  namespace: localstack
+spec:
+  selector: { app: localstack }
+  ports:
+    - { name: edge, port: 4566, targetPort: edge }

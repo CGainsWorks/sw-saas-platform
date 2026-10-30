@@ -22,6 +22,7 @@ jobs:
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -42,6 +43,7 @@ jobs:
   test:
     name: Tests (incl. tenant isolation)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     # Real PostgreSQL and real Redis. The isolation suite is meaningless against a mock:
     # what is under test is whether Postgres row-level security actually behaves the way
@@ -120,6 +122,7 @@ jobs:
   build-images:
     name: Build images
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [typecheck]
     strategy:
       fail-fast: false
@@ -145,6 +148,7 @@ jobs:
   manifests:
     name: Validate manifests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -177,9 +181,84 @@ jobs:
           docker run --rm -v "$PWD/observability:/o" \
             --entrypoint promtool prom/prometheus:v2.55.1 check rules /o/alerts/api.rules.yml
 
+  kind:
+    name: Kubernetes on kind (Calico, External Secrets, LocalStack)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [typecheck]
+    # Runs the dev overlay on a real cluster: kind with Calico so NetworkPolicies are
+    # enforced, the External Secrets Operator syncing from LocalStack Secrets Manager, the
+    # migration Job, then the isolation suites against the in-cluster API. Every version
+    # is pinned in infra/k8s/kind/versions.env, which scripts/kind/*.sh read as well.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load pinned versions
+        run: grep -E '^[A-Z_]+=' infra/k8s/kind/versions.env >> "$GITHUB_ENV"
+
+      - uses: helm/kind-action@v1.15.1
+        with:
+          version: ${{ env.KIND_VERSION }}
+          kubectl_version: ${{ env.KUBECTL_VERSION }}
+          install_only: true
+
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build --workspace @saas/shared-types
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Built here and loaded into the node, never pulled: the cluster runs exactly the
+      # images this commit produces. The layer cache is the one the build-images job fills.
+      - name: Build the API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          load: true
+          tags: ghcr.io/cgainsworks/sw-saas-platform-api:dev
+          cache-from: type=gha,scope=api
+
+      - name: Build the web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          load: true
+          tags: ghcr.io/cgainsworks/sw-saas-platform-web:dev
+          cache-from: type=gha,scope=web
+
+      - name: Create the cluster and deploy the dev overlay
+        run: scripts/kind/up.sh
+        env:
+          SKIP_BUILD: '1'
+
+      - name: Prove the NetworkPolicies are enforced
+        run: scripts/kind/netpol-check.sh
+
+      - name: Isolation tests against the in-cluster API
+        run: scripts/kind/isolation-tests.sh
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-kind
+          path: apps/api/test-results/
+          if-no-files-found: ignore
+
   security:
     name: Security scan
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       security-events: write

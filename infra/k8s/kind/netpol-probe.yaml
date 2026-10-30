@@ -1,0 +1,31 @@
+# A pod that is NOT in the allowed set, used by scripts/kind/netpol-check.sh.
+#
+# It runs the API image (so it has node for a TCP probe) but carries a label no policy
+# names. In `saas` the default-deny policy applies to it; in `netpol-control`, which has
+# no policies, the identical pod is the control that shows Postgres is reachable at all.
+# The security context satisfies the restricted Pod Security Standard that `saas`
+# enforces.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: netpol-probe
+  labels:
+    app.kubernetes.io/name: netpol-probe
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    seccompProfile: { type: RuntimeDefault }
+  containers:
+    - name: probe
+      image: ghcr.io/cgainsworks/sw-saas-platform-api:dev
+      imagePullPolicy: IfNotPresent
+      command: ['sleep', '3600']
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: { drop: ['ALL'] }
+      resources:
+        requests: { cpu: 10m, memory: 32Mi }
+        limits: { memory: 64Mi }
