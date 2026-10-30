@@ -48,7 +48,7 @@ locals {
     ManagedBy   = "terraform"
     # Makes `aws ce get-cost-and-usage --group-by TAG:Project` actually work, which is how
     # you find out what this is costing before the bill arrives.
-    CostCenter = "portfolio"
+    CostCenter = "saas-platform"
   }
 }
 
@@ -212,7 +212,9 @@ resource "aws_secretsmanager_secret_version" "app" {
 
     REDIS_URL = "rediss://:${random_password.redis_auth.result}@${module.redis.primary_endpoint}:${module.redis.port}"
 
-    JWT_PRIVATE_KEY_B64 = base64encode(tls_private_key.jwt.private_key_pem)
+    # PKCS#8, because the API imports the key with importPKCS8. `private_key_pem` is
+    # PKCS#1 for RSA and would stop every pod at boot.
+    JWT_PRIVATE_KEY_B64 = base64encode(tls_private_key.jwt.private_key_pem_pkcs8)
     JWT_PUBLIC_KEY_B64  = base64encode(tls_private_key.jwt.public_key_pem)
 
     OIDC_CLIENT_SECRET = var.oidc_client_secret
